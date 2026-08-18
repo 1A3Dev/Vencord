@@ -26,7 +26,7 @@ import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import type { Channel, Role } from "@vencord/discord-types";
 import { findCssClassesLazy } from "@webpack";
-import { ChannelStore, ChannelTypeSets, PermissionsBits, PermissionStore, Tooltip } from "@webpack/common";
+import { ChannelStore, ChannelTypeSets, PermissionsBits, PermissionStore, Tooltip, VoiceStateStore } from "@webpack/common";
 
 import HiddenChannelLockScreen, { setChannelBeginHeader } from "./components/HiddenChannelLockScreen";
 
@@ -63,6 +63,11 @@ export const settings = definePluginSettings({
             { label: "Voice Channels", value: HiddenChannelTypesToShow.Voice },
         ],
         restartNeeded: true
+    },
+    nonEmptyHiddenVoiceChannels: {
+        description: "Only show hidden voice channels that have at least one person in them",
+        type: OptionType.BOOLEAN,
+        default: false
     },
     showMode: {
         description: "The mode used to display hidden channels.",
@@ -541,11 +546,14 @@ export default definePlugin({
         try {
             if (!this.isHiddenChannel(channel)) return true;
 
+            const isVocalChannel = ChannelTypeSets.GUILD_VOCAL.has(channel.type);
+            if (isVocalChannel && settings.store.nonEmptyHiddenVoiceChannels && !this.hasVoiceChannelMembers(channel.id)) return false;
+
             switch (settings.store.hiddenChannelVisibility) {
                 case HiddenChannelTypesToShow.Text:
                     return ChannelTypeSets.GUILD_TEXT_ONLY.has(channel.type);
                 case HiddenChannelTypesToShow.Voice:
-                    return ChannelTypeSets.GUILD_VOCAL.has(channel.type);
+                    return isVocalChannel;
                 case HiddenChannelTypesToShow.All:
                 default:
                     return true;
@@ -555,6 +563,11 @@ export default definePlugin({
             return true;
         }
     },
+
+    hasVoiceChannelMembers(channelId: string) {
+        return Object.keys(VoiceStateStore.getVoiceStatesForChannel(channelId) ?? {}).length > 0;
+    },
+
     resolveGuildChannels(channels: Record<string | number, Array<{ channel: Channel; comparator: number; }> | string | number>, shouldIncludeHidden: boolean) {
         if (shouldIncludeHidden) return channels;
 
